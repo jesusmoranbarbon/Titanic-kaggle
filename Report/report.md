@@ -339,7 +339,7 @@ With the above analysis a program is created. This program is composed of four f
 - predictSurvived(model, dt, sol): A prediction is realized and then the result is saved in suitable format with the "sol" name.
 - Main(): The driver of the program. In this proyect a model is created (with the functions munging and buildModel) and then a prediction of test dataset is realized (with the function predictSurvived).
 
-Code: (the code are explained in the sections "Overview of data" and "Firts program")
+Code: (the code are explained in the sections "Overview of data" and "First program")
 
 ```r
 munging <- function(dt){
