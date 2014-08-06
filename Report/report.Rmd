@@ -1,0 +1,302 @@
+Prediction of the people´s fate who traveled on the Titanic 
+========================================================
+## Introduction
+The goal is to create a program to predict the fate of people who traveled in Titanic. Many persons died in the Titanic, the program tries to predict whether a person survives or not based on the information of such person. The program is created from historical information about people who survived and others who died on the Titanic.
+
+The program is created to participate in a [kaggle competition](https://www.kaggle.com/c/titanic-gettingStarted) and is part of the course "Introduction to Data Science" ([Coursera](https://www.coursera.org/course/datasci)). The final score obtained in the kaggle is 0.77033
+
+
+The next sections are:
+- Overview of data: In this part, the train dataset are analyzed, cleaned, and processed
+- First program: The prediction model is created and the first version of the program is build.
+- Second prediction model: The prediction model is changed
+- Third prediction model: The prediction model is again changed
+- Fourth prediction model: The final version of the prediction model is explained
+- Conclusions: The results of the program are described.
+
+## Overview of data
+General visualization of training dataset
+```{r cache = TRUE}
+library(bitops)
+library(RCurl)
+dt_train <- read.csv(text = getURL("https://raw.githubusercontent.com/jesusmoranbarbon/Titanic-kaggle/master/Data/train.csv"), header = TRUE, stringsAsFactors = FALSE)
+head(dt_train)
+```
+
+The training dataset is composed of:
+- **PassengerId**: Identificator, is not important to the prediction model
+- **Survived**: Boolean that represent wether a person survived (1) or not (0)
+  
+  Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$Survived, exclude = NULL)
+  ```
+  
+  This information is transformed in factor type:
+  ```{r cache = TRUE}
+  dt_train$Survived <- as.factor(dt_train$Survived)
+  ```
+- **Pclass**: Socio-economic status. There are three possible values: 1 (high), 2 (medium) or 3 (low)
+  
+  Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$Pclass, exclude = NULL)
+  ```
+  
+  In this training dataset there is not missing values, but in others it is possible , for these reason the missing values are replaced by the class with more people:
+  ```{r cache = TRUE}
+  largerClass <- max(dt_train$Pclass, na.rm = TRUE)
+  dt_train$Pclass[is.na(dt_train$Pclass)] <- largerClass
+  dt_train$Pclass <- as.factor(dt_train$Pclass)
+  ```
+- **Name**: Name of the persons. In this field there are other field inside. All persons has a title, for example mr., dr., sir., etc. A new field named "apellation" is created with this information. The possible values are:
+  - "common" with the titles: mr, master, ms, miss, mrs, mlle and mme
+  - "important" with the titles: don, dr, rev, major, col, sir, lady, the countess and jonkheer
+  - "captain" with the title capt
+  - "other" for the rest of titles
+  
+  For these reasons:
+  ```{r cache = TRUE}
+  dt_train$apellation <- NA 
+  dt_train$apellation[grepl("mr\\.|master\\.|ms\\.|miss\\.|mrs\\    .|mlle\\.|mme\\.", tolower(dt_train$Name))] <- "common"
+  dt_train$apellation[grepl("capt\\.", tolower(dt_train$Name))] <- "captain"
+  dt_train$apellation[grepl("don\\.|dr\\.|rev\\.|major\\.|col\\.|sir\\.|lady\\.|the countess\\.|jonkheer\\.", tolower(dt_train$Name))] <- "important"
+  dt_train$apellation <- as.factor(dt_train$apellation)
+  ```
+- **Sex**: There are two possible values: male or female
+  
+  Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$Sex, exclude = NULL)
+  ```
+  
+  In this training dataset there is not missing values, but in others it is possible , for these reason the missing values are replaced by the class with more people:
+  ```{r cache = TRUE}
+  largerSex <- max(dt_train$Sex, na.rm = TRUE)
+  dt_train$Sex[is.na(dt_train$Sex)] <- largerSex
+  dt_train$Sex <- as.factor(dt_train$Sex)
+  ```
+- **Age**: A numeric that represent the age.
+
+  Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$Age, exclude = NULL)
+  hist(dt_train$Age, xlab = "Age", main = "Histogram of Age in the training dataset")
+  ```
+  
+  There are 177 values with missing values, for these reasons these missing values are replaced with the mean age.
+  ```{r cache = TRUE}
+  meanAge <- mean(dt_train$Age, na.rm = TRUE)
+  dt_train$Age[is.na(dt_train$Age)] <- meanAge
+  ```
+- **Sibsp**: Number of siblings/spouses aboard. Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$SibSp, exclude = NULL)
+  ```
+  
+  In this training dataset there is not missing values, but in others it is possible , for these reason the missing values are replaced by the class with more people:
+  ```{r cache = TRUE}
+  largerSibSp <- as.numeric(names(which.max(table(dt_train$SibSp))))
+  dt_train$SibSp[is.na(dt_train$SibSp)] <- largerSibSp
+  ```
+- **Parch**: Number of parents/children aboard. Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$Parch, exclude = NULL)
+  ```
+  
+  In this training dataset there is not missing values, but in others it is possible , for these reason the missing values are replaced by the class with more people:
+  ```{r cache = TRUE}
+  largerParch <- as.numeric(names(which.max(table(dt_train$Parch))))
+  dt_train$Parch[is.na(dt_train$Parch)] <- largerParch
+  ```
+- **Ticket**: Number of tickets. Some tickets have letter, but in general does not seem important.
+- **Fare**:  In this training dataset there is not missing values, but in others it is possible , for these reason the missing values are replaced by the mean fare:
+  ```{r cache = TRUE}
+  meanFare <- mean(dt_train$Fare, na.rm = TRUE)
+dt_train$Fare[is.na(dt_train$Fare)] <- meanFare
+  ```
+- **Cabin**: Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$Cabin, exclude = NULL)
+  ```
+  
+  In this training dataset there are more persons who has not assigned Cabin. For these reasons there are analyzed the relation between a person who has (or not) assigned Cabin and if this person survived (or not). Then a new fiel is created, hasCabin:
+  ```{r cache = TRUE}
+  dt_train$hasCabin <- FALSE
+  dt_train$hasCabin[!(dt_train$Cabin == "")] <- TRUE
+  dt_train$hasCabin <- as.factor(dt_train$hasCabin)
+  table(dt_train$Survived, dt_train$hasCabin)
+  ```
+  
+  With this information it seems that if a person has a Cabin is more likely to survive, and if one persons has not a Cabin is more likely not survive.
+  
+- **Embarked**:  Port of embarkation. There are three possibilities:  C (Cherbourg), Q (Queenstown), S (Southampton).
+  
+  Distribution of persons:
+  ```{r cache = TRUE}
+  table(dt_train$Embarked, exclude = NULL)
+  ```
+  
+  In this training dataset there is not missing values, but in others it is possible , for these reason the missing values are replaced by the class with more people:
+  ```{r cache = TRUE}
+  maxEmbarked <- max(dt_train$Embarked)
+  dt_train$Embarked[dt_train$Embarked == ""] <- maxEmbarked
+  dt_train$Embarked <- as.factor(dt_train$Embarked)
+  ```
+
+## First program
+With the above analysis a program is created. This program is composed of four functions:
+- munging(dt): The information is cleaned and transformed. In the process, two new fields are created (apellation and hasCabin) as discussed in the previous section.
+- buildModel(dt): A prediction model based on the training dataset is created.
+- predictSurvived(model, dt, sol): A prediction is realized and then the result is saved in suitable format with the "sol" name.
+- Main(): The driver of the program. In this proyect a model is created (with the functions munging and buildModel) and then a prediction of test dataset is realized (with the function predictSurvived).
+
+Code: (the code are explained in the sections "Overview of data" and "Firts program")
+```{r cache = TRUE, results = 'hide'}
+munging <- function(dt){
+  largerClass <- max(dt$Pclass, na.rm = TRUE)
+  dt$Pclass[is.na(dt$Pclass)] <- largerClass
+  dt$Pclass <- as.factor(dt$Pclass)
+  dt$apellation <- "other" 
+  dt$apellation[grepl("mr\\.|master\\.|ms\\.|miss\\.|mrs\\.|mlle\\.|mme\\.", tolower(dt$Name))] <- "common"
+  dt$apellation[grepl("capt\\.", tolower(dt$Name))] <- "captain"
+  dt$apellation[grepl("don\\.|dr\\.|rev\\.|major\\.|col\\.|sir\\.|lady\\.|the countess\\.|jonkheer\\.", tolower(dt$Name))] <- "important"
+  dt$apellation <- as.factor(dt$apellation)
+  my_levels <- c("captain", "common", "important", "other")
+  levels(dt$apellation) <- c(levels(dt$apellation), my_levels[!(my_levels %in% levels(dt$apellation))])
+  largerSex <- max(dt$Sex, na.rm = TRUE)
+  dt$Sex[is.na(dt$Sex)] <- largerSex
+  dt$Sex <- as.factor(dt$Sex)
+  meanAge <- mean(dt$Age, na.rm = TRUE)
+  dt$Age[is.na(dt$Age)] <- meanAge
+  largerSibSp <- as.numeric(names(which.max(table(dt$SibSp))))
+  dt$SibSp[is.na(dt$SibSp)] <- largerSibSp
+  largerParch <- as.numeric(names(which.max(table(dt$Parch))))
+  dt$Parch[is.na(dt$Parch)] <- largerParch
+  meanFare <- mean(dt$Fare, na.rm = TRUE)
+  dt$Fare[is.na(dt$Fare)] <- meanFare
+  dt$hasCabin <- FALSE
+  dt$hasCabin[!(dt$Cabin == "")] <- TRUE
+  dt$hasCabin <- as.factor(dt$hasCabin)
+  maxEmbarked <- max(dt$Embarked)
+  dt$Embarked[dt$Embarked == ""] <- maxEmbarked
+  dt$Embarked <- as.factor(dt$Embarked)
+  
+  if ("Survived" %in% names(dt)){
+    dt$Survived <- as.factor(dt$Survived)
+  }
+  
+  return (dt)
+}
+
+
+buildModel <- function(dt){
+  library(randomForest)
+  fit <- randomForest(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + apellation + hasCabin, data = dt)
+  return (fit)
+}
+
+
+predictSurvived <- function(model, dt, sol){
+  Prediction <- predict(model, dt)
+  submit <- data.frame(PassengerId = dt$PassengerId, Survived = as.numeric(as.character(Prediction)))
+  write.csv(submit, file = paste("../Data/", sol, sep=""), row.names = FALSE)
+}
+
+
+Main <- function(){
+  library(bitops)
+  library(RCurl)
+  dt_train <- read.csv(text = getURL("https://raw.githubusercontent.com/jesusmoranbarbon/Titanic-kaggle/master/Data/train.csv"), header = TRUE, stringsAsFactors = FALSE)
+  dt_train <- munging(dt_train)
+  
+  fit <- buildModel(dt_train)
+  
+  dt_test <- read.csv(text = getURL("https://raw.githubusercontent.com/jesusmoranbarbon/Titanic-kaggle/master/Data/test.csv"), header = TRUE, stringsAsFactors = FALSE)
+  dt_test <- munging(dt_test)
+  
+  predictSurvived(fit, dt_test, "submit_solution_1.csv")
+}
+
+Main()
+```
+
+The prediction is in [Github](https://github.com/jesusmoranbarbon/Titanic-kaggle/blob/master/Data/submit_solution_1.csv).
+
+With this model, the result in the Kaggle competition is **0.7512**
+
+<img src = "img/result_1.png" ></img>
+
+## Second prediction model
+To improve the prediction, a second model is created without the field hasCabin. This field contains "True" if the person has anything in the field Cabin or "False" in other cases. 
+
+```{r cache = TRUE, results = 'hide'}
+buildModel_2 <- function(dt){
+  library(randomForest)
+  fit <- randomForest(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + apellation, data = dt)
+  return (fit)
+}
+
+Main_2 <- function(){
+  library(bitops)
+  library(RCurl)
+  dt_train <- read.csv(text = getURL("https://raw.githubusercontent.com/jesusmoranbarbon/Titanic-kaggle/master/Data/train.csv"), header = TRUE, stringsAsFactors = FALSE)
+  dt_train <- munging(dt_train)
+  
+  fit <- buildModel_2(dt_train)
+  
+  dt_test <- read.csv(text = getURL("https://raw.githubusercontent.com/jesusmoranbarbon/Titanic-kaggle/master/Data/test.csv"), header = TRUE, stringsAsFactors = FALSE)
+  dt_test <- munging(dt_test)
+  
+  predictSurvived(fit, dt_test, "submit_solution_2.csv")
+}
+
+Main_2()
+```
+
+The prediction is in [Github](https://github.com/jesusmoranbarbon/Titanic-kaggle/blob/master/Data/submit_solution_2.csv).
+
+With this model, the result in the Kaggle competition is **0.75598**
+
+<img src = "img/result_2.png" ></img>
+
+## Third prediction model
+A third model is created without the field Parch. This field is not relevant.
+```{r cache = TRUE}
+table(dt_train$Survived, dt_train$Parch)
+```
+
+```{r cache = TRUE, results = 'hide'}
+buildModel_3 <- function(dt){
+  library(randomForest)
+  fit <- randomForest(Survived ~ Pclass + Sex + Age + SibSp  + Fare + Embarked + apellation, data = dt)
+  return (fit)
+}
+
+Main_3 <- function(){
+  library(bitops)
+  library(RCurl)
+  dt_train <- read.csv(text = getURL("https://raw.githubusercontent.com/jesusmoranbarbon/Titanic-kaggle/master/Data/train.csv"), header = TRUE, stringsAsFactors = FALSE)
+  dt_train <- munging(dt_train)
+  
+  fit <- buildModel_3(dt_train)
+  
+  dt_test <- read.csv(text = getURL("https://raw.githubusercontent.com/jesusmoranbarbon/Titanic-kaggle/master/Data/test.csv"), header = TRUE, stringsAsFactors = FALSE)
+  dt_test <- munging(dt_test)
+  
+  predictSurvived(fit, dt_test, "submit_solution_3.csv")
+}
+
+Main_3()
+```
+
+The prediction is in [Github](https://github.com/jesusmoranbarbon/Titanic-kaggle/blob/master/Data/submit_solution_3.csv).
+
+With this model, the result in the Kaggle competition is **0.76555**
+
+<img src = "img/result_3.png" ></img>
+
+## Fourth prediction model
+
+## Conclusions
+
